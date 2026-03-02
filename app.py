@@ -1,12 +1,38 @@
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request, redirect
+import sqlite3
 
 app = Flask(__name__)
 
-# ================= LAYOUT TEMPLATE =================
+# ================= DATABASE =================
 
-layout = """
+def connect():
+    return sqlite3.connect("fs25.db")
+
+def setup():
+    conn = connect()
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS players (
+        discord_id INTEGER PRIMARY KEY,
+        discord_name TEXT,
+        ingame_name TEXT,
+        points INTEGER DEFAULT 0
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+setup()
+
+# ================= LAYOUT =================
+
+def layout(content):
+
+    return f"""
 <!doctype html>
-<html lang="ro">
+<html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,45 +40,36 @@ layout = """
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
-body {
+body {{
     background: linear-gradient(135deg, #0f172a, #1e293b);
     color: white;
-}
-
-.sidebar {
+}}
+.sidebar {{
     height: 100vh;
     background: #111827;
     padding-top: 20px;
-}
-
-.sidebar a {
+}}
+.sidebar a {{
     color: #cbd5e1;
     display: block;
     padding: 12px 20px;
     text-decoration: none;
-}
-
-.sidebar a:hover {
+}}
+.sidebar a:hover {{
     background: #1f2937;
     color: white;
-}
-
-.card-custom {
+}}
+.card-custom {{
     background: #1e293b;
     border: none;
     border-radius: 12px;
-}
-
-.stat-number {
-    font-size: 28px;
-    font-weight: bold;
-}
-
-.badge-active {
-    background: #22c55e;
-}
+}}
+input {{
+    background: #334155 !important;
+    border: none !important;
+    color: white !important;
+}}
 </style>
-
 </head>
 <body>
 
@@ -60,79 +77,15 @@ body {
 <div class="row">
 
 <div class="col-2 sidebar">
-    <h4 class="text-center text-white mb-4">FS25 Control</h4>
+    <h4 class="text-center text-white mb-4">FS25 Admin</h4>
     <a href="/">🏠 Dashboard</a>
-    <a href="#">👤 Jucători</a>
-    <a href="#">🚜 Utilaje</a>
-    <a href="#">🔧 Atașamente</a>
-    <a href="#">🌾 Terenuri</a>
-    <a href="#">🏭 Fabrici</a>
-    <a href="#">🐄 Animale</a>
-    <a href="#">📊 Reguli Puncte</a>
-    <a href="#">⏳ Activități Pending</a>
-    <a href="#">⚠ Penalizări</a>
+    <a href="/players">👤 Jucători</a>
 </div>
 
 <div class="col-10 p-4">
-
-<h2 class="mb-4">Dashboard</h2>
-
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card card-custom p-3 text-center">
-            <div class="stat-number">12</div>
-            <div>Jucători Activi</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card card-custom p-3 text-center">
-            <div class="stat-number">34</div>
-            <div>Utilaje Personale</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card card-custom p-3 text-center">
-            <div class="stat-number">5</div>
-            <div>Activități Pending</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card card-custom p-3 text-center">
-            <div class="stat-number">12,450</div>
-            <div>Total Puncte</div>
-        </div>
-    </div>
+{content}
 </div>
 
-<div class="card card-custom p-4">
-<h4>Top 5 Jucători</h4>
-<table class="table table-dark table-hover mt-3">
-<thead>
-<tr>
-<th>#</th>
-<th>Nume</th>
-<th>Puncte</th>
-<th>Status</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>Raul</td>
-<td>2450</td>
-<td><span class="badge badge-active">Activ</span></td>
-</tr>
-<tr>
-<td>2</td>
-<td>Denis</td>
-<td>2100</td>
-<td><span class="badge badge-active">Activ</span></td>
-</tr>
-</tbody>
-</table>
-</div>
-
-</div>
 </div>
 </div>
 
@@ -140,11 +93,182 @@ body {
 </html>
 """
 
-# ================= ROUTE =================
+# ================= DASHBOARD =================
 
 @app.route("/")
 def dashboard():
-    return render_template_string(layout)
+    conn = connect()
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM players")
+    total = c.fetchone()[0]
+    conn.close()
+
+    content = f"""
+    <h2 class="mb-4">Dashboard</h2>
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card card-custom p-4 text-center">
+                <h1>{total}</h1>
+                <p>Total Jucători</p>
+            </div>
+        </div>
+    </div>
+    """
+
+    return layout(content)
+
+# ================= PLAYERS =================
+
+@app.route("/players")
+def players():
+    conn = connect()
+    c = conn.cursor()
+    c.execute("SELECT * FROM players")
+    data = c.fetchall()
+    conn.close()
+
+    content = """
+    <h2 class="mb-4">Jucători</h2>
+    <a class="btn btn-success mb-3" href="/add_player">+ Adaugă Jucător</a>
+
+    <div class="card card-custom p-3">
+    <table class="table table-dark table-hover">
+    <thead>
+    <tr>
+        <th>ID Discord</th>
+        <th>Nume Discord</th>
+        <th>Nume în joc</th>
+        <th>Puncte</th>
+        <th>Acțiuni</th>
+    </tr>
+    </thead>
+    <tbody>
+    """
+
+    for p in data:
+        content += f"""
+        <tr>
+            <td>{p[0]}</td>
+            <td>{p[1]}</td>
+            <td>{p[2]}</td>
+            <td>{p[3]}</td>
+            <td>
+                <a class="btn btn-primary btn-sm" href="/edit_player/{p[0]}">Edit</a>
+                <a class="btn btn-danger btn-sm" href="/delete_player/{p[0]}">Șterge</a>
+            </td>
+        </tr>
+        """
+
+    content += "</tbody></table></div>"
+
+    return layout(content)
+
+# ================= ADD =================
+
+@app.route("/add_player", methods=["GET","POST"])
+def add_player():
+
+    if request.method == "POST":
+        conn = connect()
+        c = conn.cursor()
+        c.execute("""
+        INSERT INTO players VALUES (?,?,?,?)
+        """, (
+            request.form["discord_id"],
+            request.form["discord_name"],
+            request.form["ingame_name"],
+            request.form["points"]
+        ))
+        conn.commit()
+        conn.close()
+        return redirect("/players")
+
+    content = """
+    <h2>Adaugă Jucător</h2>
+    <form method="post">
+        <div class="mb-3">
+            <label>ID Discord</label>
+            <input name="discord_id" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label>Nume Discord</label>
+            <input name="discord_name" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label>Nume în joc</label>
+            <input name="ingame_name" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label>Puncte</label>
+            <input name="points" value="0" class="form-control">
+        </div>
+        <button class="btn btn-success">Salvează</button>
+    </form>
+    """
+
+    return layout(content)
+
+# ================= EDIT =================
+
+@app.route("/edit_player/<int:id>", methods=["GET","POST"])
+def edit_player(id):
+
+    conn = connect()
+    c = conn.cursor()
+
+    if request.method == "POST":
+        c.execute("""
+        UPDATE players
+        SET discord_name=?, ingame_name=?, points=?
+        WHERE discord_id=?
+        """, (
+            request.form["discord_name"],
+            request.form["ingame_name"],
+            request.form["points"],
+            id
+        ))
+        conn.commit()
+        conn.close()
+        return redirect("/players")
+
+    c.execute("SELECT * FROM players WHERE discord_id=?", (id,))
+    p = c.fetchone()
+    conn.close()
+
+    content = f"""
+    <h2>Modifică Jucător</h2>
+    <form method="post">
+        <div class="mb-3">
+            <label>Nume Discord</label>
+            <input name="discord_name" value="{p[1]}" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label>Nume în joc</label>
+            <input name="ingame_name" value="{p[2]}" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label>Puncte</label>
+            <input name="points" value="{p[3]}" class="form-control">
+        </div>
+        <button class="btn btn-primary">Salvează</button>
+    </form>
+    """
+
+    return layout(content)
+
+# ================= DELETE =================
+
+@app.route("/delete_player/<int:id>")
+def delete_player(id):
+    conn = connect()
+    c = conn.cursor()
+    c.execute("DELETE FROM players WHERE discord_id=?", (id,))
+    conn.commit()
+    conn.close()
+    return redirect("/players")
+
+# ================= START =================
 
 if __name__ == "__main__":
     app.run()
